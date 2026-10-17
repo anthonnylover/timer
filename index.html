@@ -196,7 +196,7 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
     <label><input type="checkbox" id="sound" checked> Pitidos</label>
     <label><input type="checkbox" id="voice" checked> Voz</label>
     <label><input type="checkbox" id="vibe" checked> Vibración</label>
-    <span>v3 · Cuenta atrás de 15 s</span>
+    <span>v4 · Cuenta atrás de 15 s</span>
   </div>
 </div>
 
@@ -479,18 +479,77 @@ document.querySelector(".modes").addEventListener("click", e => {
 });
 
 // ---------- Sonido ----------
-let audio;
+/* v4: los pitidos se PROGRAMAN por adelantado en el reloj de audio del teléfono.
+   El sistema de audio sigue sonando aunque pongas Spotify o YouTube encima,
+   así que los pitidos llegan a tiempo aunque la app esté oculta. */
+let audio = null, scheduled = [], keepAlive = null, endAt = null;
+function ctx() {
+  if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)();
+  if (audio.state === "suspended") audio.resume().catch(() => {});
+  return audio;
+}
+// Un pitido en un momento exacto del reloj de audio
+function tone(freq, ms, at) {
+  const a = ctx(), o = a.createOscillator(), g = a.createGain();
+  o.type = "square"; o.frequency.value = freq;
+  g.gain.setValueAtTime(0.0001, at);
+  g.gain.linearRampToValueAtTime(0.15, at + 0.005);
+  g.gain.exponentialRampToValueAtTime(0.0001, at + ms / 1000);
+  o.connect(g).connect(a.destination); o.start(at); o.stop(at + ms / 1000 + 0.02);
+  return o;
+}
+// Pitido inmediato
 function beep(freq = 880, ms = 160) {
   if (!$("sound").checked) return;
+  try { tone(freq, ms, ctx().currentTime + 0.01); } catch (e) {}
+}
+function clearScheduled() { scheduled.forEach(o => { try { o.stop(); } catch (e) {} }); scheduled = []; endAt = null; }
+// Programa todos los pitidos que faltan de la sesión
+function scheduleAudio() {
+  clearScheduled();
+  if (!running || paused || !audio || !$("sound").checked) return;
   try {
-    audio = audio || new (window.AudioContext || window.webkitAudioContext)();
-    const o = audio.createOscillator(), g = audio.createGain();
-    o.type = "square"; o.frequency.value = freq;
-    g.gain.setValueAtTime(freq ? 0.15 : 0.0001, audio.currentTime);
-    g.gain.exponentialRampToValueAtTime(0.0001, audio.currentTime + ms / 1000);
-    o.connect(g).connect(audio.destination); o.start(); o.stop(audio.currentTime + ms / 1000);
+    const now = elapsedNow(), base = audio.currentTime;
+    const at = t => base + (t - now);
+    // Con la voz apagada, o con la app oculta (la voz puede fallar ahí), los pitidos hacen la cuenta 3-2-1
+    const countdown = !$("voice").checked || document.hidden;
+    plan.forEach((sg, i) => {
+      if (i > 0 && sg.start > now) scheduled.push(tone(sg.phase === "rest" ? 520 : 1040, 450, at(sg.start)));
+      if (countdown) for (const k of [3, 2, 1]) {
+        const t = sg.start + sg.dur - k;
+        if (t > now && t > sg.start) scheduled.push(tone(740, 120, at(t)));
+      }
+    });
+    const last = plan[plan.length - 1], end = last.start + last.dur;
+    if (end > now) { endAt = at(end); scheduled.push(tone(1200, 700, endAt)); }
   } catch (e) {}
 }
+// Un sonido casi inaudible mantiene la app "reproduciendo audio", y Android no la congela
+function startKeepAlive() {
+  if (keepAlive) return;
+  try {
+    const a = ctx(), o = a.createOscillator(), g = a.createGain();
+    o.frequency.value = 40; g.gain.value = 0.002;
+    o.connect(g).connect(a.destination); o.start(); keepAlive = o;
+  } catch (e) {}
+}
+function stopKeepAlive() { try { keepAlive?.stop(); } catch (e) {} keepAlive = null; }
+
+// ---------- Reloj interno en un "worker" ----------
+// Chrome frena mucho menos los relojes de un worker cuando la app está detrás de otra
+let clock = null;
+function startClock() {
+  if (clock) return;
+  try {
+    const src = "setInterval(() => postMessage(0), 200);";
+    clock = new Worker(URL.createObjectURL(new Blob([src], { type: "text/javascript" })));
+    clock.onmessage = () => tick();
+  } catch (e) {
+    const id = setInterval(tick, 200);
+    clock = { terminate: () => clearInterval(id) };
+  }
+}
+function stopClock() { try { clock?.terminate(); } catch (e) {} clock = null; }
 
 // ---------- Voz (síntesis de voz del propio teléfono, sin internet) ----------
 let esVoice = null;
@@ -539,13 +598,13 @@ function voiceCue(seg, sec) {
   // Cuenta regresiva para empezar: de 10 a 1 (en descansos cortos, desde donde alcance)
   if (startsNext) {
     const from = Math.min(10, seg.dur - 3);
-    if (sec >= 1 && sec <= from) { if (voz) speak(String(sec)); else if (sec <= 3) beep(740, 120); if (sec <= 3) vibrate(80); return; }
+    if (sec >= 1 && sec <= from) { if (voz) speak(String(sec)); if (sec <= 3) vibrate(80); return; }
     // Descanso entre vueltas: cada minuto, cuánto falta
     if ((seg.setRest || seg.dur >= 120) && sec % 60 === 0 && sec < seg.dur) speak(`Quedan ${spoken(sec)} para ${seg.setRest ? "la siguiente vuelta" : "continuar"}`);
     return;
   }
   // Trabajo: 3, 2, 1 al final
-  if (sec >= 1 && sec <= 3) { if (voz) speak(String(sec)); else beep(740, 120); vibrate(80); return; }
+  if (sec >= 1 && sec <= 3) { if (voz) speak(String(sec)); vibrate(80); return; }
   if (seg.up) { if (seg.dur >= 180 && sec === 60) speak("Último minuto del time cap"); return; }
   // Mitad de la estación: cuántos segundos quedan
   const half = Math.round(seg.dur / 2);
@@ -582,8 +641,7 @@ function tick() {
   if (idx !== lastIndex) {                         // entramos en un segmento nuevo
     const prev = plan[lastIndex];
     if (prev) {
-      recordResult(prev, Math.min(prev.dur, elapsed - prev.start));
-      beep(seg.phase === "rest" ? 520 : 1040, 450);
+      recordResult(prev, Math.min(prev.dur, elapsed - prev.start));   // el pitido ya estaba programado
       vibrate(seg.phase === "rest" ? 200 : [300, 100, 300]);
       announce(seg);
     }
@@ -610,8 +668,6 @@ function tick() {
   $("total").textContent = fmt(Math.max(0, elapsed - PREP));
   const nx = plan[idx + 1];
   $("next").innerHTML = nx ? `Siguiente: <strong>${nx.bname && nx.bi !== seg.bi ? nx.bname + " · " : ""}${nx.label} ${fmt(nx.dur)}${nx.ex ? " · " + esc(nx.ex) : ""}</strong>` : "Último intervalo";
-
-  requestAnimationFrame(tick);
 }
 
 // ---------- Controles ----------
@@ -622,16 +678,21 @@ async function start() {
     if (plan.length < 2) { $("phase").textContent = "Añade un bloque al MIX"; return; }
     startedAt = performance.now(); pausedTotal = 0; laps = 0; results = []; lastIndex = -1; lastSecond = null;
     running = true; paused = false; $("resultsBox").innerHTML = "";
-    beep(0, 1); // desbloquea el audio en móvil
+    try { ctx(); } catch (e) {}   // el audio se activa con este toque
     speak(`Prepárate. ${plan[1].ex ? "Empezamos con " + plan[1].ex : ""}`); // la voz necesita un toque para activarse
     try { wakeLock = await navigator.wakeLock?.request("screen"); } catch (e) {}
   } else if (paused) { pausedTotal += performance.now() - pausedAt; paused = false; }
   else { paused = true; pausedAt = performance.now(); }
   $("app").classList.toggle("is-running", running);
   $("clock").classList.toggle("running", running && !paused);
-  if (paused) $("phase").textContent = "Pausa";
+  if (paused) {
+    $("phase").textContent = "Pausa";
+    clearScheduled(); stopClock(); stopKeepAlive();
+    try { speechSynthesis.cancel(); } catch (e) {}
+  } else {
+    startKeepAlive(); scheduleAudio(); startClock(); tick();
+  }
   updateButtons();
-  requestAnimationFrame(tick);
 }
 
 // Saltar = adelantar el reloj hasta el final del segmento actual
@@ -641,13 +702,18 @@ function skip() {
   if (!seg) return;
   seg.doneAt = elapsedNow() - seg.start;   // guardamos el tiempo real (For Time)
   pausedTotal -= (seg.start + seg.dur - elapsedNow()) * 1000 + 1;
+  const next = plan[lastIndex + 1];
+  if (next) beep(next.phase === "rest" ? 520 : 1040, 450);
+  scheduleAudio(); tick();
 }
 
 function finish() {
   const last = plan[plan.length - 1];
   recordResult(last, Math.min(last.dur, elapsedNow() - last.start));
   running = false; finished = true;
-  beep(1200, 700);
+  // Si el pitido final no estaba programado (por ejemplo, tras "Terminé"), suena ahora
+  if (!endAt || !audio || audio.currentTime > endAt + 1) beep(1200, 700);
+  endAt = null; scheduled = []; stopClock(); stopKeepAlive();
   vibrate([400, 150, 400, 150, 600]);
   speak("¡Terminado! Gran trabajo.");
   $("exercise").textContent = "";
@@ -664,6 +730,7 @@ function finish() {
 
 function resetClock() {
   running = paused = finished = false; laps = 0;
+  clearScheduled(); stopClock(); stopKeepAlive();
   plan = buildPlan();
   document.documentElement.style.setProperty("--phase", "var(--prep)");
   const first = plan[1];
@@ -714,11 +781,15 @@ $("tv").addEventListener("click", async () => {
 document.addEventListener("fullscreenchange", () => { if (!document.fullscreenElement) setTV(false); });
 
 // Al volver a la app, pedimos de nuevo que la pantalla no se apague
+// Al ocultar o mostrar la app, reprogramamos los pitidos (oculta = cuenta 3-2-1 también con pitidos)
 document.addEventListener("visibilitychange", async () => {
-  if (document.visibilityState === "visible" && running) {
+  if (!running || paused) return;
+  scheduleAudio(); tick();
+  if (document.visibilityState === "visible") {
     try { wakeLock = await navigator.wakeLock?.request("screen"); } catch (e) {}
   }
 });
+["sound", "voice"].forEach(id => $(id).addEventListener("change", () => scheduleAudio()));
 
 load();
 migrate();
