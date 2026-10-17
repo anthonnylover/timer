@@ -118,6 +118,37 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 
 .foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; flex-wrap: wrap; }
 .foot label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+
+/* ---------- v2: ejercicios, guardados, pantalla completa ---------- */
+.brand h1 { flex: 1; }
+.tv-btn { flex: none; border: 1px solid var(--line); background: var(--panel); border-radius: 10px; padding: 10px 12px; font: 700 12px/1 var(--f-body); letter-spacing: .06em; text-transform: uppercase; color: var(--chrome); }
+.exercise { font: 700 clamp(20px, 6vw, 30px)/1.15 var(--f-body); color: var(--chrome); min-height: 1.15em; text-wrap: balance; overflow-wrap: anywhere; }
+.note { width: 100%; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 11px 12px; color: var(--fg); font: 600 15px/1.2 var(--f-body); }
+.note::placeholder { color: var(--muted); font-weight: 400; }
+.note:focus { outline: 2px solid var(--cyan); outline-offset: 1px; }
+.presets { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+.presets h2 { margin: 0; font: 400 13px/1 var(--f-display); letter-spacing: .14em; text-transform: uppercase; color: var(--cyan); }
+.preset-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.preset { display: flex; align-items: stretch; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--panel-2); max-width: 100%; }
+.preset button { border: 0; background: transparent; padding: 10px 12px; font: 600 14px/1.1 var(--f-body); min-width: 0; overflow-wrap: anywhere; text-align: left; }
+.preset .x { border-left: 1px solid var(--line); color: #ff8a8a; padding: 10px; white-space: nowrap; }
+.preset-save { display: flex; gap: 8px; }
+.preset-save .note { flex: 1; min-width: 0; }
+.preset-save button { flex: none; border: 0; border-radius: 10px; padding: 0 16px; background: var(--cyan); color: #04122a; font: 700 14px/1 var(--f-body); letter-spacing: .04em; text-transform: uppercase; }
+.saved-msg { font-size: 13px; color: var(--cyan); min-height: 1em; margin: 0; }
+
+/* Modo TV: solo reloj y controles, números enormes */
+.app.tv { max-width: none; min-height: calc(100dvh - 48px); }
+.app.tv .modes, .app.tv .builder, .app.tv .foot { display: none; }
+.app.tv .brand img { width: 40px; }
+.app.tv .brand h1 { font-size: 16px; }
+.app.tv .clock { flex: 1; justify-content: center; gap: 1.5vh; }
+.app.tv .time { font-size: clamp(120px, min(30vw, 42vh), 560px); }
+.app.tv .exercise { font-size: clamp(26px, min(5vw, 6vh), 64px); }
+.app.tv .phase { font-size: clamp(16px, 2.6vh, 30px); }
+.app.tv .block-name, .app.tv .next { font-size: clamp(13px, 2.2vh, 24px); }
+.app.tv .meta b { font-size: clamp(20px, 4vh, 48px); }
+.app.tv .controls button { padding-block: 22px; }
 @media (prefers-reduced-motion: reduce) { .clock::before { transition: none; } }
 </style>
 </head>
@@ -126,6 +157,7 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
   <header class="brand">
     <img src="logo.png" alt="Logo En el Músculo">
     <h1>En el Músculo<span>Timer</span></h1>
+    <button class="tv-btn" id="tv">⛶ Pantalla completa</button>
   </header>
 
   <nav class="modes" role="group" aria-label="Tipo de sesión">
@@ -140,9 +172,10 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
     <div class="block-name" id="blockName"></div>
     <div class="phase" id="phase">Listo</div>
     <div class="time" id="time">00:00</div>
+    <div class="exercise" id="exercise"></div>
     <div class="meta">
       <div>Bloque<b id="block">–</b></div>
-      <div>Ronda<b id="round">–</b></div>
+      <div><span id="roundLabel">Estación</span><b id="round">–</b></div>
       <div>Total<b id="total">00:00</b></div>
     </div>
     <div class="next" id="next"></div>
@@ -160,8 +193,10 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
   <section class="builder" id="builder"></section>
 
   <div class="foot">
-    <label><input type="checkbox" id="sound" checked> Sonido</label>
-    <span>Cuenta atrás de 10 s · Espacio = empezar/pausa</span>
+    <label><input type="checkbox" id="sound" checked> Pitidos</label>
+    <label><input type="checkbox" id="voice" checked> Voz</label>
+    <label><input type="checkbox" id="vibe" checked> Vibración</label>
+    <span>v3 · Cuenta atrás de 15 s</span>
   </div>
 </div>
 
@@ -175,10 +210,20 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
    - MIX = varios bloques seguidos, repetidos N vueltas.
    ========================================================= */
 
-const PREP = 10;
+const PREP = 15;   // 15 s: da tiempo a decir "Prepárate" y contar de 10 a 1
 
 // ---------- Catálogo de tipos de bloque ----------
 // fields: lo que el usuario puede ajustar. segs(v): cómo se convierte en segmentos.
+// Repite todas las estaciones "Vueltas" veces, con un descanso entre vuelta y vuelta
+function withSets(v, stations) {
+  const sets = v.sets || 1, out = [];
+  for (let s = 1; s <= sets; s++) {
+    stations().forEach(seg => out.push({ ...seg, set: s, sets }));
+    if (s < sets && v.setRest > 0) out.push({ phase: "rest", label: "Descanso entre vueltas", dur: v.setRest, setRest: true, set: s, sets });
+  }
+  return out;
+}
+
 const TYPES = {
   fortime: {
     name: "For Time", hint: "Termina el trabajo lo antes posible. Pulsa “Terminé” al acabar o el reloj se corta en el time cap.",
@@ -195,28 +240,32 @@ const TYPES = {
   emom: {
     name: "EMOM", hint: "Al inicio de cada intervalo haces el trabajo; lo que sobre es tu descanso.",
     fields: {
-      rounds: { label: "Rondas", value: 10, min: 1, max: 60, step: 1 },
-      every:  { label: "Cada", value: 60, min: 10, max: 600, step: 5, time: true }
+      rounds:  { label: "Estaciones", value: 10, min: 1, max: 60, step: 1 },
+      every:   { label: "Cada", value: 60, min: 10, max: 600, step: 5, time: true },
+      sets:    { label: "Vueltas", value: 1, min: 1, max: 20, step: 1 },
+      setRest: { label: "Descanso entre vueltas", value: 60, min: 0, max: 900, step: 15, time: true }
     },
-    sum: v => `${v.rounds} × ${fmt(v.every)}`,
-    segs: v => Array.from({ length: v.rounds }, (_, i) => ({ phase: "work", label: "EMOM", dur: v.every, round: i + 1, rounds: v.rounds }))
+    sum: v => `${v.rounds} est. × ${fmt(v.every)}${v.sets > 1 ? ` · ${v.sets} vueltas` : ""}`,
+    segs: v => withSets(v, () => Array.from({ length: v.rounds }, (_, i) => ({ phase: "work", label: "EMOM", dur: v.every, round: i + 1, rounds: v.rounds })))
   },
   tabata: {
     name: "Tabata", hint: "Intervalos de trabajo y descanso. Clásico: 20 s / 10 s × 8.",
     fields: {
       work:   { label: "Trabajo", value: 20, min: 5, max: 600, step: 5, time: true },
       rest:   { label: "Descanso", value: 10, min: 0, max: 600, step: 5, time: true },
-      rounds: { label: "Rondas", value: 8, min: 1, max: 50, step: 1 }
+      rounds:  { label: "Estaciones", value: 8, min: 1, max: 50, step: 1 },
+      sets:    { label: "Vueltas", value: 1, min: 1, max: 20, step: 1 },
+      setRest: { label: "Descanso entre vueltas", value: 60, min: 0, max: 900, step: 15, time: true }
     },
-    sum: v => `${v.rounds} × ${v.work}s/${v.rest}s`,
-    segs: v => {
+    sum: v => `${v.rounds} est. × ${v.work}s/${v.rest}s${v.sets > 1 ? ` · ${v.sets} vueltas` : ""}`,
+    segs: v => withSets(v, () => {
       const out = [];
       for (let i = 1; i <= v.rounds; i++) {
         out.push({ phase: "work", label: "Trabajo", dur: v.work, round: i, rounds: v.rounds });
         if (v.rest > 0 && i < v.rounds) out.push({ phase: "rest", label: "Descanso", dur: v.rest, round: i, rounds: v.rounds });
       }
       return out;
-    }
+    })
   },
   work: {
     name: "Trabajo", fields: { sec: { label: "Duración", value: 60, min: 5, max: 3600, step: 15, time: true } },
@@ -233,16 +282,19 @@ const defaults = type => Object.fromEntries(Object.entries(TYPES[type].fields).m
 // Ejemplo inicial de MIX (puedes editarlo o borrarlo)
 let state = {
   tab: "mix",
-  mix: { rounds: 1, blocks: [
-    { type: "tabata", v: defaults("tabata") },
+  mix: { rounds: 1, rest: 60, blocks: [
+    { type: "tabata", v: defaults("tabata"), note: "Burpees, Sentadillas con salto" },
     { type: "rest",   v: { sec: 60 } },
-    { type: "amrap",  v: defaults("amrap") },
+    { type: "amrap",  v: defaults("amrap"), note: "10 KB swings + 10 box jumps + 200 m carrera" },
     { type: "rest",   v: { sec: 60 } },
-    { type: "emom",   v: { rounds: 6, every: 60 } }
+    { type: "emom",   v: { ...defaults("emom"), rounds: 6 }, note: "12 thrusters, 10 pull-ups" }
   ]},
-  singles: { fortime: defaults("fortime"), amrap: defaults("amrap"), emom: defaults("emom"), tabata: defaults("tabata") }
+  singles: { fortime: defaults("fortime"), amrap: defaults("amrap"), emom: defaults("emom"), tabata: defaults("tabata") },
+  notes: { fortime: "", amrap: "", emom: "", tabata: "" },   // ejercicios de los modos sueltos
+  presets: [],                                               // MIX guardados con nombre
+  prefs: { sound: true, voice: true, vibe: true }
 };
-let showTypes = false;
+let showTypes = false, pendingDelete = -1, savedMsg = "";
 
 let plan = [], startedAt = 0, pausedTotal = 0, pausedAt = 0;
 let running = false, paused = false, finished = false;
@@ -255,21 +307,43 @@ function save() { try { localStorage.setItem("eem-timer", JSON.stringify(state))
 function load() {
   try {
     const d = JSON.parse(localStorage.getItem("eem-timer"));
-    if (d && d.mix && d.singles) state = d;
+    // Mezclamos con los valores por defecto: así los datos de la v1 siguen funcionando
+    if (d && d.mix && d.singles) state = { ...state, ...d,
+      notes: { ...state.notes, ...(d.notes || {}) }, prefs: { ...state.prefs, ...(d.prefs || {}) }, presets: d.presets || [] };
   } catch (e) {}
 }
+// Completa campos nuevos en datos guardados por versiones anteriores
+function migrate() {
+  const fix = b => { if (b && TYPES[b.type]) b.v = { ...defaults(b.type), ...b.v }; };
+  const fixMix = m => { m.blocks.forEach(fix); if (m.rest == null) m.rest = 60; };
+  fixMix(state.mix);
+  state.presets.forEach(p => fixMix(p.mix));
+  for (const k of Object.keys(state.singles)) state.singles[k] = { ...defaults(k), ...state.singles[k] };
+}
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 
 // Bloques de la sesión actual (MIX o un modo suelto)
-const sessionBlocks = () => state.tab === "mix" ? state.mix.blocks : [{ type: state.tab, v: state.singles[state.tab] }];
+const sessionBlocks = () => state.tab === "mix" ? state.mix.blocks : [{ type: state.tab, v: state.singles[state.tab], note: state.notes[state.tab] }];
+
+// Ejercicios: "Burpees, Sentadillas, Flexiones" → en EMOM/Tabata rotan por ronda
+function exerciseFor(note, seg) {
+  const list = String(note || "").split(/[,\n]/).map(s => s.trim()).filter(Boolean);
+  if (!list.length || seg.phase === "rest") return "";
+  if (seg.round && list.length > 1) return list[(seg.round - 1) % list.length];
+  return list.join(" · ");
+}
 const sessionRounds = () => state.tab === "mix" ? state.mix.rounds : 1;
 
 // ---------- Construir el plan: bloques → segmentos ----------
 function buildPlan() {
   const blocks = sessionBlocks(), R = sessionRounds();
   const segs = [{ phase: "prep", label: "Prepárate", dur: PREP }];
-  for (let r = 1; r <= R; r++)
+  for (let r = 1; r <= R; r++) {
     blocks.forEach((b, bi) => TYPES[b.type].segs(b.v).forEach(s =>
-      segs.push({ ...s, bi, bname: TYPES[b.type].name, mixRound: r })));
+      segs.push({ ...s, bi, bname: TYPES[b.type].name, mixRound: r, ex: exerciseFor(b.note, s) })));
+    const mixRest = state.tab === "mix" ? state.mix.rest : 0;
+    if (r < R && mixRest > 0) segs.push({ phase: "rest", label: "Descanso entre vueltas", dur: mixRest, setRest: true, mixSetRest: true, bname: "Descanso", bi: blocks.length - 1, mixRound: r, ex: "" });
+  }
   let t = 0;
   for (const s of segs) { s.start = t; t += s.dur; }
   return segs;
@@ -292,7 +366,19 @@ function renderBuilder() {
   let html = "";
   if (state.tab === "mix") {
     const blocks = state.mix.blocks;
-    html += `<p class="hint">Combina varios tipos de entrenamiento en una sola sesión. Se ejecutan en orden, de arriba abajo.</p>`;
+    // Mis entrenamientos (predeterminados)
+    html += `<div class="presets"><h2>Mis entrenamientos</h2>`;
+    if (state.presets.length) html += `<div class="preset-list">${state.presets.map((p, i) => `
+      <div class="preset">
+        <button data-act="preset-load" data-i="${i}" aria-label="Cargar ${esc(p.name)}">${esc(p.name)}</button>
+        <button class="x" data-act="preset-del" data-i="${i}" aria-label="Borrar ${esc(p.name)}">${pendingDelete === i ? "¿Borrar?" : "✕"}</button>
+      </div>`).join("")}</div>`;
+    else html += `<p class="hint">Arma tu MIX abajo y guárdalo con un nombre para cargarlo cuando quieras.</p>`;
+    html += `<div class="preset-save">
+        <input class="note" id="presetName" maxlength="40" placeholder="Nombre, ej: Lunes piernas" aria-label="Nombre del entrenamiento">
+        <button data-act="preset-save" ${blocks.length ? "" : "disabled"}>Guardar</button>
+      </div><p class="saved-msg">${esc(savedMsg)}</p></div>`;
+    html += `<p class="hint">Combina varios tipos de entrenamiento en una sola sesión. Se ejecutan en orden, de arriba abajo. En EMOM y Tabata, separa los ejercicios con comas para que roten en cada ronda.</p>`;
     html += `<div class="blocks">` + blocks.map((b, i) => {
       const T = TYPES[b.type];
       return `<div class="block">
@@ -304,6 +390,7 @@ function renderBuilder() {
           <button class="icon-btn del" data-act="del" data-i="${i}" aria-label="Eliminar">✕</button>
         </div>
         <div class="fields">${Object.entries(T.fields).map(([n, f]) => stepperHTML(i, n, f, b.v[n])).join("")}</div>
+        ${b.type === "rest" ? "" : `<input class="note" data-note="${i}" value="${esc(b.note)}" maxlength="160" placeholder="${b.type === "emom" || b.type === "tabata" ? "Ejercicios: Burpees, Sentadillas, Flexiones" : "Ejercicios: 10 burpees + 15 KB swings"}" aria-label="Ejercicios del bloque ${i + 1}">`}
       </div>`;
     }).join("") + `</div>`;
     if (showTypes) html += `<div class="types">${["fortime", "amrap", "emom", "tabata"].map(t => `<button data-act="add" data-type="${t}">${TYPES[t].name}</button>`).join("")}</div>`;
@@ -311,15 +398,16 @@ function renderBuilder() {
       <button data-act="types">+ Tipo de entrenamiento</button>
       <button data-act="add" data-type="work">+ Trabajo</button>
       <button data-act="add" data-type="rest">+ Descanso</button>
-      <button data-act="rounds" ${blocks.length ? "" : "disabled"}>+ Rondas</button>
+      <button data-act="rounds" ${blocks.length ? "" : "disabled"}>+ Vueltas</button>
     </div>`;
     if (blocks.length) html += `<div class="mixbar">
-      ${state.mix.rounds > 1 || state.mixRoundsOpen ? stepperHTML("mix", "rounds", { label: "Vueltas al MIX" }, state.mix.rounds) : ""}
+      ${state.mix.rounds > 1 || state.mixRoundsOpen ? stepperHTML("mix", "rounds", { label: "Vueltas al MIX" }, state.mix.rounds) + stepperHTML("mix", "rest", { label: "Descanso entre vueltas", time: true }, state.mix.rest) : ""}
       <span class="total">Duración aprox.<b>${fmt(totalDur(buildPlan()))}</b></span>
     </div>`;
   } else {
     const T = TYPES[state.tab];
-    html += `<p class="hint">${T.hint}</p><div class="fields">${Object.entries(T.fields).map(([n, f]) => stepperHTML("s", n, f, state.singles[state.tab][n])).join("")}</div>`;
+    html += `<p class="hint">${T.hint}</p><div class="fields">${Object.entries(T.fields).map(([n, f]) => stepperHTML("s", n, f, state.singles[state.tab][n])).join("")}</div>
+      <input class="note" data-note="s" value="${esc(state.notes[state.tab])}" maxlength="160" placeholder="${state.tab === "emom" || state.tab === "tabata" ? "Ejercicios: Burpees, Sentadillas, Flexiones" : "Ejercicios: 21-15-9 thrusters y pull-ups"}" aria-label="Ejercicios">`;
   }
   $("builder").innerHTML = html;
 }
@@ -328,8 +416,27 @@ function renderBuilder() {
 $("builder").addEventListener("click", e => {
   const b = e.target.closest("button[data-act]");
   if (!b || running) return;
-  const blocks = state.mix.blocks, i = Number(b.dataset.i);
-  switch (b.dataset.act) {
+  const blocks = state.mix.blocks, i = Number(b.dataset.i), act = b.dataset.act;
+  if (act !== "preset-del") pendingDelete = -1;
+  if (act !== "preset-save" && act !== "preset-load") savedMsg = "";
+  switch (act) {
+    case "preset-save": {
+      const name = $("presetName").value.trim() || `MIX ${state.presets.length + 1}`;
+      const copy = JSON.parse(JSON.stringify(state.mix));            // copia independiente
+      const at = state.presets.findIndex(p => p.name.toLowerCase() === name.toLowerCase());
+      if (at >= 0) state.presets[at].mix = copy; else state.presets.push({ name, mix: copy });
+      savedMsg = at >= 0 ? `“${name}” actualizado.` : `“${name}” guardado.`;
+      break;
+    }
+    case "preset-load":
+      state.mix = JSON.parse(JSON.stringify(state.presets[i].mix));
+      state.mixRoundsOpen = state.mix.rounds > 1;
+      savedMsg = `“${state.presets[i].name}” cargado. Listo para empezar.`;
+      break;
+    case "preset-del":
+      if (pendingDelete === i) { state.presets.splice(i, 1); pendingDelete = -1; }
+      else pendingDelete = i;   // primer toque pide confirmación
+      break;
     case "types": showTypes = !showTypes; break;
     case "add": blocks.push({ type: b.dataset.type, v: defaults(b.dataset.type) }); showTypes = false; break;
     case "del": blocks.splice(i, 1); if (!blocks.length) { state.mix.rounds = 1; state.mixRoundsOpen = false; } break;
@@ -338,7 +445,11 @@ $("builder").addEventListener("click", e => {
     case "rounds": state.mixRoundsOpen = true; if (state.mix.rounds < 2) state.mix.rounds = 2; break;
     case "step": {
       const id = b.dataset.id, name = b.dataset.f, d = Number(b.dataset.d);
-      if (id === "mix") { state.mix.rounds = Math.min(20, Math.max(1, state.mix.rounds + d)); break; }
+      if (id === "mix") {
+        if (name === "rest") state.mix.rest = Math.min(900, Math.max(0, state.mix.rest + 15 * d));
+        else state.mix.rounds = Math.min(20, Math.max(1, state.mix.rounds + d));
+        break;
+      }
       const target = id === "s" ? { type: state.tab, v: state.singles[state.tab] } : blocks[Number(id)];
       const f = TYPES[target.type].fields[name];
       target.v[name] = Math.min(f.max, Math.max(f.min, target.v[name] + f.step * d));
@@ -346,6 +457,19 @@ $("builder").addEventListener("click", e => {
     }
   }
   save(); renderBuilder(); resetClock();
+});
+
+// Escribir ejercicios: guardamos sin repintar, para no perder el cursor
+$("builder").addEventListener("input", e => {
+  const id = e.target.dataset.note;
+  if (id == null) return;
+  if (id === "s") state.notes[state.tab] = e.target.value;
+  else state.mix.blocks[Number(id)].note = e.target.value;
+  save(); resetClock();
+});
+// Enter en el nombre = guardar
+$("builder").addEventListener("keydown", e => {
+  if (e.target.id === "presetName" && e.key === "Enter") document.querySelector('[data-act="preset-save"]')?.click();
 });
 
 document.querySelector(".modes").addEventListener("click", e => {
@@ -367,6 +491,73 @@ function beep(freq = 880, ms = 160) {
     o.connect(g).connect(audio.destination); o.start(); o.stop(audio.currentTime + ms / 1000);
   } catch (e) {}
 }
+
+// ---------- Voz (síntesis de voz del propio teléfono, sin internet) ----------
+let esVoice = null;
+function pickVoice() {
+  const vs = window.speechSynthesis?.getVoices() || [];
+  esVoice = vs.find(v => /^es[-_](US|MX|419|VE|CO)/i.test(v.lang)) || vs.find(v => /^es/i.test(v.lang)) || null;
+}
+if ("speechSynthesis" in window) { pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; }
+function speak(text) {
+  if (!$("voice").checked || !("speechSynthesis" in window) || !text) return;
+  try {
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = esVoice?.lang || "es-ES"; if (esVoice) u.voice = esVoice;
+    u.rate = 1.05; u.volume = 1;
+    speechSynthesis.speak(u);
+  } catch (e) {}
+}
+// Tiempo dicho en voz: 90 → "1 minuto y 30 segundos"
+function spoken(s) {
+  s = Math.round(s);
+  const m = Math.floor(s / 60), r = s % 60;
+  const mm = m ? `${m} ${m === 1 ? "minuto" : "minutos"}` : "";
+  const ss = r ? `${r} ${r === 1 ? "segundo" : "segundos"}` : "";
+  return [mm, ss].filter(Boolean).join(" y ") || "0 segundos";
+}
+// Qué dice la voz al empezar cada segmento
+function announce(seg) {
+  const next = plan[plan.indexOf(seg) + 1];
+  if (seg.setRest) {
+    const which = seg.mixSetRest ? "Vuelta" : `Vuelta ${seg.set} de ${seg.sets}`;
+    return speak(`${which} terminada. Descanso de ${spoken(seg.dur)}.`);
+  }
+  if (seg.phase === "rest") return speak(seg.dur > 12 && next?.ex ? `Descanso. Siguiente: ${next.ex}` : "Descanso");
+  const ex = seg.ex ? ". " + seg.ex : "";
+  const vuelta = seg.sets > 1 && seg.round === 1 ? `Vuelta ${seg.set}. ` : "";
+  if (seg.bname === "AMRAP") return speak(`AMRAP, ${spoken(seg.dur)}. ¡Vamos!${ex}`);
+  if (seg.bname === "For Time") return speak(`For Time. ¡Vamos!${ex}`);
+  if (seg.round) return speak(`${vuelta}Estación ${seg.round}${ex}`);
+  speak(`¡Trabajo!${ex}`);
+}
+// Avisos por segundo (se llama cada vez que cambia el segundo que se muestra)
+function voiceCue(seg, sec) {
+  const voz = $("voice").checked && "speechSynthesis" in window;
+  const startsNext = seg.phase === "prep" || seg.phase === "rest";   // lo que viene después es trabajo
+  // Cuenta regresiva para empezar: de 10 a 1 (en descansos cortos, desde donde alcance)
+  if (startsNext) {
+    const from = Math.min(10, seg.dur - 3);
+    if (sec >= 1 && sec <= from) { if (voz) speak(String(sec)); else if (sec <= 3) beep(740, 120); if (sec <= 3) vibrate(80); return; }
+    // Descanso entre vueltas: cada minuto, cuánto falta
+    if ((seg.setRest || seg.dur >= 120) && sec % 60 === 0 && sec < seg.dur) speak(`Quedan ${spoken(sec)} para ${seg.setRest ? "la siguiente vuelta" : "continuar"}`);
+    return;
+  }
+  // Trabajo: 3, 2, 1 al final
+  if (sec >= 1 && sec <= 3) { if (voz) speak(String(sec)); else beep(740, 120); vibrate(80); return; }
+  if (seg.up) { if (seg.dur >= 180 && sec === 60) speak("Último minuto del time cap"); return; }
+  // Mitad de la estación: cuántos segundos quedan
+  const half = Math.round(seg.dur / 2);
+  if (seg.dur >= 10 && sec === half) speak(`Quedan ${spoken(half)}`);
+  else if (seg.dur >= 180 && sec === 60) speak("Último minuto");
+}
+
+// ---------- Vibración (Android) ----------
+const vibrate = p => { if ($("vibe").checked) try { navigator.vibrate?.(p); } catch (e) {} };
+
+// Guardar las preferencias de sonido
+["sound", "voice", "vibe"].forEach(id => $(id).addEventListener("change", () => { state.prefs[id] = $(id).checked; save(); }));
 
 // ---------- Resultados (rondas de AMRAP, tiempo de For Time) ----------
 function recordResult(seg, timeInSeg) {
@@ -390,24 +581,35 @@ function tick() {
 
   if (idx !== lastIndex) {                         // entramos en un segmento nuevo
     const prev = plan[lastIndex];
-    if (prev) { recordResult(prev, Math.min(prev.dur, elapsed - prev.start)); beep(seg.phase === "rest" ? 520 : 1040, 450); }
+    if (prev) {
+      recordResult(prev, Math.min(prev.dur, elapsed - prev.start));
+      beep(seg.phase === "rest" ? 520 : 1040, 450);
+      vibrate(seg.phase === "rest" ? 200 : [300, 100, 300]);
+      announce(seg);
+    }
     if (seg.lap) laps = 0;
     lastIndex = idx; updateButtons();
   }
   const sec = Math.ceil(left);
-  if (sec !== lastSecond) { if (sec >= 1 && sec <= 3) beep(740, 120); lastSecond = sec; }
+  if (sec !== lastSecond) {
+    if (lastSecond !== null || seg.phase === "prep") voiceCue(seg, sec);
+    lastSecond = sec;
+  }
 
   document.documentElement.style.setProperty("--phase", `var(--${seg.phase})`);
   const nBlocks = sessionBlocks().length, R = sessionRounds();
-  $("blockName").textContent = seg.phase === "prep" ? (plan[1]?.bname || "") : seg.bname + (R > 1 ? ` · vuelta ${seg.mixRound}/${R}` : "");
+  $("blockName").textContent = seg.phase === "prep" ? (plan[1]?.bname || "")
+    : seg.bname + (seg.sets > 1 ? ` · vuelta ${seg.set}/${seg.sets}` : "") + (R > 1 ? ` · MIX ${seg.mixRound}/${R}` : "");
   $("phase").textContent = seg.label;
+  $("exercise").textContent = seg.phase === "prep" ? (plan[1]?.ex || "") : seg.ex;
   $("time").textContent = seg.up ? fmt(Math.floor(inSeg)) : fmt(left);
   $("clock").style.setProperty("--progress", (inSeg / seg.dur * 100).toFixed(1) + "%");
   $("block").textContent = seg.phase === "prep" ? `0/${nBlocks}` : `${seg.bi + 1}/${nBlocks}`;
+  $("roundLabel").textContent = seg.lap && !seg.up ? "Rondas" : "Estación";
   $("round").textContent = seg.round ? `${seg.round}/${seg.rounds}` : seg.lap ? laps : "–";
   $("total").textContent = fmt(Math.max(0, elapsed - PREP));
   const nx = plan[idx + 1];
-  $("next").innerHTML = nx ? `Siguiente: <strong>${nx.bname && nx.bi !== seg.bi ? nx.bname + " · " : ""}${nx.label} ${fmt(nx.dur)}</strong>` : "Último intervalo";
+  $("next").innerHTML = nx ? `Siguiente: <strong>${nx.bname && nx.bi !== seg.bi ? nx.bname + " · " : ""}${nx.label} ${fmt(nx.dur)}${nx.ex ? " · " + esc(nx.ex) : ""}</strong>` : "Último intervalo";
 
   requestAnimationFrame(tick);
 }
@@ -421,6 +623,7 @@ async function start() {
     startedAt = performance.now(); pausedTotal = 0; laps = 0; results = []; lastIndex = -1; lastSecond = null;
     running = true; paused = false; $("resultsBox").innerHTML = "";
     beep(0, 1); // desbloquea el audio en móvil
+    speak(`Prepárate. ${plan[1].ex ? "Empezamos con " + plan[1].ex : ""}`); // la voz necesita un toque para activarse
     try { wakeLock = await navigator.wakeLock?.request("screen"); } catch (e) {}
   } else if (paused) { pausedTotal += performance.now() - pausedAt; paused = false; }
   else { paused = true; pausedAt = performance.now(); }
@@ -445,6 +648,9 @@ function finish() {
   recordResult(last, Math.min(last.dur, elapsedNow() - last.start));
   running = false; finished = true;
   beep(1200, 700);
+  vibrate([400, 150, 400, 150, 600]);
+  speak("¡Terminado! Gran trabajo.");
+  $("exercise").textContent = "";
   $("phase").textContent = "¡Terminado!";
   $("time").textContent = fmt(totalDur(plan) > 0 ? elapsedNow() - PREP : 0);
   $("next").textContent = "Gran trabajo. Tu mejor versión empieza aquí.";
@@ -463,6 +669,8 @@ function resetClock() {
   const first = plan[1];
   $("blockName").textContent = first ? first.bname : "";
   $("phase").textContent = first ? "Listo" : "Añade bloques al MIX";
+  $("exercise").textContent = first?.ex || "";
+  try { speechSynthesis?.cancel(); } catch (e) {}
   $("time").textContent = first ? (first.up ? "00:00" : fmt(first.dur)) : "00:00";
   $("block").textContent = `0/${sessionBlocks().length}`;
   $("round").textContent = "–";
@@ -490,7 +698,33 @@ $("skip").addEventListener("click", skip);
 $("lap").addEventListener("click", () => { laps++; beep(1320, 80); $("round").textContent = laps; });
 document.addEventListener("keydown", e => { if (e.code === "Space" && e.target === document.body) { e.preventDefault(); start(); } });
 
+// ---------- Pantalla completa / modo TV ----------
+function setTV(on) {
+  $("app").classList.toggle("tv", on);
+  $("tv").textContent = on ? "✕ Salir" : "⛶ Pantalla completa";
+}
+$("tv").addEventListener("click", async () => {
+  const on = !$("app").classList.contains("tv");
+  setTV(on);
+  try {
+    if (on && !document.fullscreenElement) await document.documentElement.requestFullscreen?.();
+    if (!on && document.fullscreenElement) await document.exitFullscreen?.();
+  } catch (e) {}   // iPhone no tiene pantalla completa: igual se agranda el reloj
+});
+document.addEventListener("fullscreenchange", () => { if (!document.fullscreenElement) setTV(false); });
+
+// Al volver a la app, pedimos de nuevo que la pantalla no se apague
+document.addEventListener("visibilitychange", async () => {
+  if (document.visibilityState === "visible" && running) {
+    try { wakeLock = await navigator.wakeLock?.request("screen"); } catch (e) {}
+  }
+});
+
 load();
+migrate();
+["sound", "voice", "vibe"].forEach(id => { $(id).checked = state.prefs[id] !== false; });
+if (!navigator.vibrate) $("vibe").parentElement.hidden = true;   // iPhone no vibra desde la web
+if (!("speechSynthesis" in window)) $("voice").parentElement.hidden = true;
 renderBuilder();
 resetClock();
 </script>

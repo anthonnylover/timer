@@ -1,7 +1,7 @@
 // Service worker: guarda la app en el teléfono para que funcione sin internet.
 // IMPORTANTE: cada vez que cambies la app, sube el número de versión (v1 → v2)
 // para que los celulares de tus clientes descarguen la versión nueva.
-const VERSION = "eem-timer-v1";
+const VERSION = "eem-timer-v3";
 const ARCHIVOS = ["./", "index.html", "logo.png", "manifest.webmanifest", "icon-192.png", "icon-512.png"];
 
 self.addEventListener("install", e => {
