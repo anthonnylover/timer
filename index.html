@@ -1,0 +1,505 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>En el Músculo Timer</title>
+<meta name="description" content="Timer de entrenamiento con modo MIX: For Time, AMRAP, EMOM y Tabata.">
+<meta name="theme-color" content="#050d1f">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="EEM Timer">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Russo+One&family=Barlow:wght@400;600;700&display=swap">
+<style>
+/* Layout: cabecera de marca, reloj grande arriba, debajo el constructor MIX (bloques apilados). Al entrenar se oculta el constructor. */
+:root {
+  color-scheme: dark;
+  --bg: #050d1f;          /* azul noche del logo */
+  --panel: #0c1a36;
+  --panel-2: #12264a;
+  --line: #1d3563;
+  --fg: #eef3fa;
+  --muted: #8ea3c4;
+  --chrome: #c9d4e2;      /* plateado de las letras */
+  --cyan: #22c3ff;        /* trabajo */
+  --royal: #2f63e8;       /* descanso */
+  --work: var(--cyan);
+  --rest: var(--royal);
+  --prep: var(--chrome);
+  --phase: var(--prep);
+  --f-display: "Russo One", "Arial Black", Impact, sans-serif;
+  --f-body: "Barlow", system-ui, sans-serif;
+}
+html, body { height: 100%; }
+body {
+  background: radial-gradient(120% 60% at 50% 0%, #0f2a5c 0%, var(--bg) 60%) var(--bg) fixed;
+  color: var(--fg); font-family: var(--f-body); font-size: 15px; margin: 0;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-top: max(12px, env(safe-area-inset-top, 0px));
+  padding-bottom: max(28px, env(safe-area-inset-bottom, 0px));
+}
+* { box-sizing: border-box; }
+button { font-family: inherit; color: inherit; cursor: pointer; }
+button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+.app { max-width: 560px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+
+/* ---------- Marca ---------- */
+.brand { display: flex; align-items: center; gap: 12px; }
+.brand img { width: 58px; height: auto; flex: none; filter: drop-shadow(0 0 12px rgba(34,195,255,.35)); }
+.brand h1 { margin: 0; font: 400 22px/1 var(--f-display); letter-spacing: .02em; text-transform: uppercase;
+  background: linear-gradient(180deg, #ffffff 0%, var(--chrome) 55%, #7f8fa6 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.brand h1 span { display: block; font-size: 13px; letter-spacing: .32em; color: var(--cyan); -webkit-text-fill-color: var(--cyan); margin-top: 4px; }
+
+/* ---------- Pestañas ---------- */
+.modes { display: grid; grid-template-columns: 1.2fr repeat(4, 1fr); gap: 4px; background: var(--panel); padding: 4px; border-radius: 12px; border: 1px solid var(--line); }
+.modes button { font: 700 12px/1 var(--f-body); letter-spacing: .06em; text-transform: uppercase; background: transparent; color: var(--muted); border: 0; padding: 11px 2px; border-radius: 8px; }
+.modes button[data-mode="mix"] { font-family: var(--f-display); font-weight: 400; letter-spacing: .1em; }
+.modes button[aria-pressed="true"] { background: linear-gradient(180deg, var(--cyan), #1597d6); color: #04122a; }
+
+/* ---------- Reloj ---------- */
+.clock { position: relative; border-radius: 18px; background: var(--panel); border: 1px solid var(--line); padding: 16px 14px 20px; text-align: center; overflow: hidden; display: flex; flex-direction: column; gap: 6px; }
+.clock::before { content: ""; position: absolute; left: 0; bottom: 0; height: 6px; width: var(--progress, 0%); background: var(--phase); transition: width .2s linear; }
+.clock .block-name { font: 400 13px/1.2 var(--f-display); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); min-height: 1.2em; }
+.phase { font: 700 14px/1 var(--f-body); letter-spacing: .24em; text-transform: uppercase; color: var(--phase); }
+.time { font: 400 clamp(80px, 26vw, 150px)/1 var(--f-display); font-variant-numeric: tabular-nums; color: var(--fg); }
+.clock.running .time { color: var(--phase); text-shadow: 0 0 28px color-mix(in srgb, var(--phase) 45%, transparent); }
+.meta { display: flex; justify-content: center; gap: 26px; color: var(--muted); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; }
+.meta b { color: var(--fg); font: 400 20px/1 var(--f-display); display: block; margin-top: 4px; letter-spacing: 0; font-variant-numeric: tabular-nums; }
+.next { font-size: 13px; color: var(--muted); min-height: 1.3em; }
+.next strong { color: var(--chrome); }
+
+/* ---------- Controles ---------- */
+.controls { display: grid; grid-template-columns: 1fr 2fr 1fr; gap: 10px; }
+.controls button, .lap { font: 700 14px/1 var(--f-body); letter-spacing: .08em; text-transform: uppercase; padding: 18px 6px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel); }
+.controls .primary { background: var(--phase); border-color: transparent; color: #04122a; font-size: 17px; }
+.controls button:disabled { opacity: .35; cursor: default; }
+.lap { width: 100%; background: var(--panel-2); border-color: var(--cyan); color: var(--cyan); font-size: 16px; padding: 20px; }
+
+/* ---------- Constructor MIX ---------- */
+.builder { display: flex; flex-direction: column; gap: 10px; }
+.is-running .builder, .is-running .modes { display: none; }
+.hint { color: var(--muted); font-size: 13px; line-height: 1.45; margin: 0; }
+.blocks { display: flex; flex-direction: column; gap: 8px; }
+.block { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 10px; }
+.block-head { display: flex; align-items: center; gap: 8px; }
+.chip { font: 400 12px/1 var(--f-display); letter-spacing: .1em; text-transform: uppercase; padding: 6px 9px; border-radius: 6px; background: var(--chip, var(--cyan)); color: #04122a; }
+.chip.rest { --chip: var(--royal); color: #fff; }
+.chip.work { --chip: var(--chrome); }
+.block-head .sum { color: var(--muted); font-size: 13px; flex: 1; min-width: 0; }
+.icon-btn { width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); font-size: 14px; line-height: 1; }
+.icon-btn.del { color: #ff8a8a; }
+.fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; }
+.field { background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
+.field label { font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.stepper { display: flex; align-items: center; justify-content: space-between; gap: 4px; }
+.stepper button { width: 34px; height: 34px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel-2); font-size: 18px; }
+.stepper output { font: 400 22px/1 var(--f-display); font-variant-numeric: tabular-nums; min-width: 4ch; text-align: center; }
+
+.add { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; border-radius: 12px; overflow: hidden; border: 1px solid var(--line); background: var(--line); }
+.add button { background: var(--panel-2); border: 0; padding: 16px 8px; font: 600 15px/1.1 var(--f-body); }
+.add button:disabled { color: var(--muted); opacity: .5; cursor: default; }
+.types { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.types button { background: var(--panel); border: 1px solid var(--cyan); color: var(--cyan); border-radius: 10px; padding: 12px 2px; font: 700 12px/1 var(--f-body); letter-spacing: .05em; text-transform: uppercase; }
+.mixbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
+.mixbar .field { flex: 1; min-width: 150px; }
+.mixbar .total { font-size: 13px; color: var(--muted); }
+.mixbar .total b { font: 400 18px/1 var(--f-display); color: var(--fg); margin-left: 4px; }
+
+.results { background: var(--panel); border: 1px solid var(--cyan); border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; }
+.results h2 { margin: 0 0 4px; font: 400 15px/1 var(--f-display); letter-spacing: .1em; text-transform: uppercase; color: var(--cyan); }
+.results div { display: flex; justify-content: space-between; font-size: 14px; border-top: 1px solid var(--line); padding-top: 6px; }
+.results b { font-variant-numeric: tabular-nums; }
+
+.foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; flex-wrap: wrap; }
+.foot label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+@media (prefers-reduced-motion: reduce) { .clock::before { transition: none; } }
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <header class="brand">
+    <img src="logo.png" alt="Logo En el Músculo">
+    <h1>En el Músculo<span>Timer</span></h1>
+  </header>
+
+  <nav class="modes" role="group" aria-label="Tipo de sesión">
+    <button data-mode="mix">MIX</button>
+    <button data-mode="fortime">For Time</button>
+    <button data-mode="amrap">AMRAP</button>
+    <button data-mode="emom">EMOM</button>
+    <button data-mode="tabata">Tabata</button>
+  </nav>
+
+  <section class="clock" id="clock">
+    <div class="block-name" id="blockName"></div>
+    <div class="phase" id="phase">Listo</div>
+    <div class="time" id="time">00:00</div>
+    <div class="meta">
+      <div>Bloque<b id="block">–</b></div>
+      <div>Ronda<b id="round">–</b></div>
+      <div>Total<b id="total">00:00</b></div>
+    </div>
+    <div class="next" id="next"></div>
+  </section>
+
+  <div class="controls">
+    <button id="reset">Reset</button>
+    <button id="start" class="primary">Empezar</button>
+    <button id="skip" disabled>Saltar ⏭</button>
+  </div>
+  <button class="lap" id="lap" hidden>+1 Ronda</button>
+
+  <div id="resultsBox"></div>
+
+  <section class="builder" id="builder"></section>
+
+  <div class="foot">
+    <label><input type="checkbox" id="sound" checked> Sonido</label>
+    <span>Cuenta atrás de 10 s · Espacio = empezar/pausa</span>
+  </div>
+</div>
+
+<script>
+/* =========================================================
+   EN EL MÚSCULO TIMER
+   Idea central: todo entrenamiento es una lista de BLOQUES,
+   y cada bloque se convierte en SEGMENTOS (trozos de tiempo
+   con fase: prep / work / rest). El reloj solo recorre segmentos.
+   - Modos sueltos (AMRAP, EMOM...) = un MIX de 1 bloque.
+   - MIX = varios bloques seguidos, repetidos N vueltas.
+   ========================================================= */
+
+const PREP = 10;
+
+// ---------- Catálogo de tipos de bloque ----------
+// fields: lo que el usuario puede ajustar. segs(v): cómo se convierte en segmentos.
+const TYPES = {
+  fortime: {
+    name: "For Time", hint: "Termina el trabajo lo antes posible. Pulsa “Terminé” al acabar o el reloj se corta en el time cap.",
+    fields: { cap: { label: "Time cap (min)", value: 10, min: 1, max: 60, step: 1 } },
+    sum: v => `cap ${v.cap} min`,
+    segs: v => [{ phase: "work", label: "For Time", dur: v.cap * 60, up: true, lap: true }]
+  },
+  amrap: {
+    name: "AMRAP", hint: "Tantas rondas como puedas. Pulsa “+1 Ronda” cada vez que completes una vuelta.",
+    fields: { min: { label: "Duración (min)", value: 8, min: 1, max: 60, step: 1 } },
+    sum: v => `${v.min} min`,
+    segs: v => [{ phase: "work", label: "AMRAP", dur: v.min * 60, lap: true }]
+  },
+  emom: {
+    name: "EMOM", hint: "Al inicio de cada intervalo haces el trabajo; lo que sobre es tu descanso.",
+    fields: {
+      rounds: { label: "Rondas", value: 10, min: 1, max: 60, step: 1 },
+      every:  { label: "Cada", value: 60, min: 10, max: 600, step: 5, time: true }
+    },
+    sum: v => `${v.rounds} × ${fmt(v.every)}`,
+    segs: v => Array.from({ length: v.rounds }, (_, i) => ({ phase: "work", label: "EMOM", dur: v.every, round: i + 1, rounds: v.rounds }))
+  },
+  tabata: {
+    name: "Tabata", hint: "Intervalos de trabajo y descanso. Clásico: 20 s / 10 s × 8.",
+    fields: {
+      work:   { label: "Trabajo", value: 20, min: 5, max: 600, step: 5, time: true },
+      rest:   { label: "Descanso", value: 10, min: 0, max: 600, step: 5, time: true },
+      rounds: { label: "Rondas", value: 8, min: 1, max: 50, step: 1 }
+    },
+    sum: v => `${v.rounds} × ${v.work}s/${v.rest}s`,
+    segs: v => {
+      const out = [];
+      for (let i = 1; i <= v.rounds; i++) {
+        out.push({ phase: "work", label: "Trabajo", dur: v.work, round: i, rounds: v.rounds });
+        if (v.rest > 0 && i < v.rounds) out.push({ phase: "rest", label: "Descanso", dur: v.rest, round: i, rounds: v.rounds });
+      }
+      return out;
+    }
+  },
+  work: {
+    name: "Trabajo", fields: { sec: { label: "Duración", value: 60, min: 5, max: 3600, step: 15, time: true } },
+    sum: v => fmt(v.sec), segs: v => [{ phase: "work", label: "Trabajo", dur: v.sec }]
+  },
+  rest: {
+    name: "Descanso", fields: { sec: { label: "Duración", value: 60, min: 5, max: 3600, step: 15, time: true } },
+    sum: v => fmt(v.sec), segs: v => [{ phase: "rest", label: "Descanso", dur: v.sec }]
+  }
+};
+const defaults = type => Object.fromEntries(Object.entries(TYPES[type].fields).map(([k, f]) => [k, f.value]));
+
+// ---------- Estado ----------
+// Ejemplo inicial de MIX (puedes editarlo o borrarlo)
+let state = {
+  tab: "mix",
+  mix: { rounds: 1, blocks: [
+    { type: "tabata", v: defaults("tabata") },
+    { type: "rest",   v: { sec: 60 } },
+    { type: "amrap",  v: defaults("amrap") },
+    { type: "rest",   v: { sec: 60 } },
+    { type: "emom",   v: { rounds: 6, every: 60 } }
+  ]},
+  singles: { fortime: defaults("fortime"), amrap: defaults("amrap"), emom: defaults("emom"), tabata: defaults("tabata") }
+};
+let showTypes = false;
+
+let plan = [], startedAt = 0, pausedTotal = 0, pausedAt = 0;
+let running = false, paused = false, finished = false;
+let lastIndex = -1, lastSecond = null, laps = 0, results = [], wakeLock = null;
+
+const $ = id => document.getElementById(id);
+function fmt(s) { s = Math.max(0, Math.ceil(s)); return String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0"); }
+
+function save() { try { localStorage.setItem("eem-timer", JSON.stringify(state)); } catch (e) {} }
+function load() {
+  try {
+    const d = JSON.parse(localStorage.getItem("eem-timer"));
+    if (d && d.mix && d.singles) state = d;
+  } catch (e) {}
+}
+
+// Bloques de la sesión actual (MIX o un modo suelto)
+const sessionBlocks = () => state.tab === "mix" ? state.mix.blocks : [{ type: state.tab, v: state.singles[state.tab] }];
+const sessionRounds = () => state.tab === "mix" ? state.mix.rounds : 1;
+
+// ---------- Construir el plan: bloques → segmentos ----------
+function buildPlan() {
+  const blocks = sessionBlocks(), R = sessionRounds();
+  const segs = [{ phase: "prep", label: "Prepárate", dur: PREP }];
+  for (let r = 1; r <= R; r++)
+    blocks.forEach((b, bi) => TYPES[b.type].segs(b.v).forEach(s =>
+      segs.push({ ...s, bi, bname: TYPES[b.type].name, mixRound: r })));
+  let t = 0;
+  for (const s of segs) { s.start = t; t += s.dur; }
+  return segs;
+}
+const totalDur = p => p.reduce((a, s) => a + (s.phase === "prep" ? 0 : s.dur), 0);
+
+// ---------- Pintar el constructor ----------
+function stepperHTML(id, name, f, value) {
+  return `<div class="field">
+    <label for="o-${id}-${name}">${f.label}</label>
+    <div class="stepper">
+      <button data-act="step" data-id="${id}" data-f="${name}" data-d="-1" aria-label="Menos">−</button>
+      <output id="o-${id}-${name}">${f.time ? fmt(value) : value}</output>
+      <button data-act="step" data-id="${id}" data-f="${name}" data-d="1" aria-label="Más">+</button>
+    </div></div>`;
+}
+
+function renderBuilder() {
+  document.querySelectorAll(".modes button").forEach(b => b.setAttribute("aria-pressed", b.dataset.mode === state.tab));
+  let html = "";
+  if (state.tab === "mix") {
+    const blocks = state.mix.blocks;
+    html += `<p class="hint">Combina varios tipos de entrenamiento en una sola sesión. Se ejecutan en orden, de arriba abajo.</p>`;
+    html += `<div class="blocks">` + blocks.map((b, i) => {
+      const T = TYPES[b.type];
+      return `<div class="block">
+        <div class="block-head">
+          <span class="chip ${b.type === "rest" ? "rest" : b.type === "work" ? "work" : ""}">${T.name}</span>
+          <span class="sum">${T.sum(b.v)}</span>
+          <button class="icon-btn" data-act="up" data-i="${i}" aria-label="Subir" ${i === 0 ? "disabled" : ""}>▲</button>
+          <button class="icon-btn" data-act="down" data-i="${i}" aria-label="Bajar" ${i === blocks.length - 1 ? "disabled" : ""}>▼</button>
+          <button class="icon-btn del" data-act="del" data-i="${i}" aria-label="Eliminar">✕</button>
+        </div>
+        <div class="fields">${Object.entries(T.fields).map(([n, f]) => stepperHTML(i, n, f, b.v[n])).join("")}</div>
+      </div>`;
+    }).join("") + `</div>`;
+    if (showTypes) html += `<div class="types">${["fortime", "amrap", "emom", "tabata"].map(t => `<button data-act="add" data-type="${t}">${TYPES[t].name}</button>`).join("")}</div>`;
+    html += `<div class="add">
+      <button data-act="types">+ Tipo de entrenamiento</button>
+      <button data-act="add" data-type="work">+ Trabajo</button>
+      <button data-act="add" data-type="rest">+ Descanso</button>
+      <button data-act="rounds" ${blocks.length ? "" : "disabled"}>+ Rondas</button>
+    </div>`;
+    if (blocks.length) html += `<div class="mixbar">
+      ${state.mix.rounds > 1 || state.mixRoundsOpen ? stepperHTML("mix", "rounds", { label: "Vueltas al MIX" }, state.mix.rounds) : ""}
+      <span class="total">Duración aprox.<b>${fmt(totalDur(buildPlan()))}</b></span>
+    </div>`;
+  } else {
+    const T = TYPES[state.tab];
+    html += `<p class="hint">${T.hint}</p><div class="fields">${Object.entries(T.fields).map(([n, f]) => stepperHTML("s", n, f, state.singles[state.tab][n])).join("")}</div>`;
+  }
+  $("builder").innerHTML = html;
+}
+
+// ---------- Acciones del constructor ----------
+$("builder").addEventListener("click", e => {
+  const b = e.target.closest("button[data-act]");
+  if (!b || running) return;
+  const blocks = state.mix.blocks, i = Number(b.dataset.i);
+  switch (b.dataset.act) {
+    case "types": showTypes = !showTypes; break;
+    case "add": blocks.push({ type: b.dataset.type, v: defaults(b.dataset.type) }); showTypes = false; break;
+    case "del": blocks.splice(i, 1); if (!blocks.length) { state.mix.rounds = 1; state.mixRoundsOpen = false; } break;
+    case "up": [blocks[i - 1], blocks[i]] = [blocks[i], blocks[i - 1]]; break;
+    case "down": [blocks[i + 1], blocks[i]] = [blocks[i], blocks[i + 1]]; break;
+    case "rounds": state.mixRoundsOpen = true; if (state.mix.rounds < 2) state.mix.rounds = 2; break;
+    case "step": {
+      const id = b.dataset.id, name = b.dataset.f, d = Number(b.dataset.d);
+      if (id === "mix") { state.mix.rounds = Math.min(20, Math.max(1, state.mix.rounds + d)); break; }
+      const target = id === "s" ? { type: state.tab, v: state.singles[state.tab] } : blocks[Number(id)];
+      const f = TYPES[target.type].fields[name];
+      target.v[name] = Math.min(f.max, Math.max(f.min, target.v[name] + f.step * d));
+      break;
+    }
+  }
+  save(); renderBuilder(); resetClock();
+});
+
+document.querySelector(".modes").addEventListener("click", e => {
+  const b = e.target.closest("button[data-mode]");
+  if (!b || running) return;
+  state.tab = b.dataset.mode; save(); renderBuilder(); resetClock();
+});
+
+// ---------- Sonido ----------
+let audio;
+function beep(freq = 880, ms = 160) {
+  if (!$("sound").checked) return;
+  try {
+    audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+    const o = audio.createOscillator(), g = audio.createGain();
+    o.type = "square"; o.frequency.value = freq;
+    g.gain.setValueAtTime(freq ? 0.15 : 0.0001, audio.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.0001, audio.currentTime + ms / 1000);
+    o.connect(g).connect(audio.destination); o.start(); o.stop(audio.currentTime + ms / 1000);
+  } catch (e) {}
+}
+
+// ---------- Resultados (rondas de AMRAP, tiempo de For Time) ----------
+function recordResult(seg, timeInSeg) {
+  if (!seg || !seg.lap) return;
+  if (seg.doneAt != null) timeInSeg = seg.doneAt;
+  const vuelta = sessionRounds() > 1 ? ` · vuelta ${seg.mixRound}` : "";
+  results.push(seg.up
+    ? { name: `For Time${vuelta}`, value: timeInSeg >= seg.dur ? `Cap ${fmt(seg.dur)}` : fmt(timeInSeg) }
+    : { name: `AMRAP${vuelta}`, value: `${laps} rondas` });
+}
+
+// ---------- El corazón: tick() ----------
+const elapsedNow = () => (performance.now() - startedAt - pausedTotal) / 1000;
+
+function tick() {
+  if (!running || paused) return;
+  const elapsed = elapsedNow();
+  const idx = plan.findIndex(s => elapsed < s.start + s.dur);
+  if (idx === -1) return finish();
+  const seg = plan[idx], inSeg = elapsed - seg.start, left = seg.dur - inSeg;
+
+  if (idx !== lastIndex) {                         // entramos en un segmento nuevo
+    const prev = plan[lastIndex];
+    if (prev) { recordResult(prev, Math.min(prev.dur, elapsed - prev.start)); beep(seg.phase === "rest" ? 520 : 1040, 450); }
+    if (seg.lap) laps = 0;
+    lastIndex = idx; updateButtons();
+  }
+  const sec = Math.ceil(left);
+  if (sec !== lastSecond) { if (sec >= 1 && sec <= 3) beep(740, 120); lastSecond = sec; }
+
+  document.documentElement.style.setProperty("--phase", `var(--${seg.phase})`);
+  const nBlocks = sessionBlocks().length, R = sessionRounds();
+  $("blockName").textContent = seg.phase === "prep" ? (plan[1]?.bname || "") : seg.bname + (R > 1 ? ` · vuelta ${seg.mixRound}/${R}` : "");
+  $("phase").textContent = seg.label;
+  $("time").textContent = seg.up ? fmt(Math.floor(inSeg)) : fmt(left);
+  $("clock").style.setProperty("--progress", (inSeg / seg.dur * 100).toFixed(1) + "%");
+  $("block").textContent = seg.phase === "prep" ? `0/${nBlocks}` : `${seg.bi + 1}/${nBlocks}`;
+  $("round").textContent = seg.round ? `${seg.round}/${seg.rounds}` : seg.lap ? laps : "–";
+  $("total").textContent = fmt(Math.max(0, elapsed - PREP));
+  const nx = plan[idx + 1];
+  $("next").innerHTML = nx ? `Siguiente: <strong>${nx.bname && nx.bi !== seg.bi ? nx.bname + " · " : ""}${nx.label} ${fmt(nx.dur)}</strong>` : "Último intervalo";
+
+  requestAnimationFrame(tick);
+}
+
+// ---------- Controles ----------
+async function start() {
+  if (finished) resetClock();
+  if (!running) {
+    plan = buildPlan();
+    if (plan.length < 2) { $("phase").textContent = "Añade un bloque al MIX"; return; }
+    startedAt = performance.now(); pausedTotal = 0; laps = 0; results = []; lastIndex = -1; lastSecond = null;
+    running = true; paused = false; $("resultsBox").innerHTML = "";
+    beep(0, 1); // desbloquea el audio en móvil
+    try { wakeLock = await navigator.wakeLock?.request("screen"); } catch (e) {}
+  } else if (paused) { pausedTotal += performance.now() - pausedAt; paused = false; }
+  else { paused = true; pausedAt = performance.now(); }
+  $("app").classList.toggle("is-running", running);
+  $("clock").classList.toggle("running", running && !paused);
+  if (paused) $("phase").textContent = "Pausa";
+  updateButtons();
+  requestAnimationFrame(tick);
+}
+
+// Saltar = adelantar el reloj hasta el final del segmento actual
+function skip() {
+  if (!running || paused) return;
+  const seg = plan[lastIndex];
+  if (!seg) return;
+  seg.doneAt = elapsedNow() - seg.start;   // guardamos el tiempo real (For Time)
+  pausedTotal -= (seg.start + seg.dur - elapsedNow()) * 1000 + 1;
+}
+
+function finish() {
+  const last = plan[plan.length - 1];
+  recordResult(last, Math.min(last.dur, elapsedNow() - last.start));
+  running = false; finished = true;
+  beep(1200, 700);
+  $("phase").textContent = "¡Terminado!";
+  $("time").textContent = fmt(totalDur(plan) > 0 ? elapsedNow() - PREP : 0);
+  $("next").textContent = "Gran trabajo. Tu mejor versión empieza aquí.";
+  $("clock").style.setProperty("--progress", "100%");
+  $("clock").classList.remove("running");
+  $("app").classList.remove("is-running");
+  if (results.length) $("resultsBox").innerHTML = `<div class="results"><h2>Resultados</h2>${results.map(r => `<div><span>${r.name}</span><b>${r.value}</b></div>`).join("")}</div>`;
+  try { wakeLock?.release(); } catch (e) {}
+  updateButtons();
+}
+
+function resetClock() {
+  running = paused = finished = false; laps = 0;
+  plan = buildPlan();
+  document.documentElement.style.setProperty("--phase", "var(--prep)");
+  const first = plan[1];
+  $("blockName").textContent = first ? first.bname : "";
+  $("phase").textContent = first ? "Listo" : "Añade bloques al MIX";
+  $("time").textContent = first ? (first.up ? "00:00" : fmt(first.dur)) : "00:00";
+  $("block").textContent = `0/${sessionBlocks().length}`;
+  $("round").textContent = "–";
+  $("total").textContent = fmt(totalDur(plan));
+  $("next").textContent = "";
+  $("clock").style.setProperty("--progress", "0%");
+  $("clock").classList.remove("running");
+  $("app").classList.remove("is-running");
+  $("resultsBox").innerHTML = "";
+  try { wakeLock?.release(); } catch (e) {}
+  updateButtons();
+}
+
+function updateButtons() {
+  $("start").textContent = !running ? (finished ? "Otra vez" : "Empezar") : paused ? "Seguir" : "Pausa";
+  const seg = running ? plan[lastIndex] : null;
+  $("skip").disabled = !(running && !paused);
+  $("skip").textContent = seg?.up ? "Terminé ✓" : "Saltar ⏭";
+  $("lap").hidden = !(seg && seg.lap && !seg.up);
+}
+
+$("start").addEventListener("click", start);
+$("reset").addEventListener("click", resetClock);
+$("skip").addEventListener("click", skip);
+$("lap").addEventListener("click", () => { laps++; beep(1320, 80); $("round").textContent = laps; });
+document.addEventListener("keydown", e => { if (e.code === "Space" && e.target === document.body) { e.preventDefault(); start(); } });
+
+load();
+renderBuilder();
+resetClock();
+</script>
+
+<script>
+// Registrar el service worker: permite instalar la app y usarla sin internet
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
+}
+</script>
+</body>
+</html>
